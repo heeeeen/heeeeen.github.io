@@ -1,0 +1,101 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description"><title>分析重装系统也无法清除的鬼影病毒 | MS509 Team</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=0.0.0"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/normalize/7.0.0/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/pure-min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">分析重装系统也无法清除的鬼影病毒</h1><a id="logo" href="/.">MS509 Team</a><p class="description">Mission Studio</p></div><div id="nav-menu"><a href="/." class="current"><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div id="layout" class="pure-g"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">分析重装系统也无法清除的鬼影病毒</h1><div class="post-meta">Jul 26, 2016<span> | </span><span class="category"><a href="/categories/二进制/">二进制</a></span></div><div class="post-content"><p>作者：expsky</p>
+<p><strong>整理电脑的时候找到自已以前分析的一个鬼影病毒的资料，当时兼容市面上主要的windows系统（XP, win7,包含x86和x64系统）样本来自国外，有不少亮点，当时花了不少时间把所有原理分析出来并重新用汇编和C++实现了出来。以前的一些资料简单整理了下，分享出来，也给自己以前的工作留个记录。</strong><a id="more"></a></p>
+<p>该木马样本通过感染MBR达到早于系统得到执行。整个样本以非文件形式存在，直接写人磁盘扇区。包括感染的MBR以及保存在磁盘末尾非文件系统的payload。</p>
+<p>木马执行流程从MBR开始，通过hook和注册回调函数的机制，将所有的木马程序在windows启动过程中逐级得到执行， windows启动完毕后最终将下载者dll注入到指定的系统进程中，下载者代码循环执行而告终。</p>
+<p><section class="aimeibian"><section><section class="aimeibian" data-ele=""><section><section> </section></section></section></section></section><section><section class="Powered-by-XIUMI V5"><section class=""><section class=""><section class=""></section></section></section></section></section></p>
+<h3 id="0x00木马有亮点"><a href="#0x00木马有亮点" class="headerlink" title="0x00木马有亮点"></a>0x00木马有亮点</h3><p>绕过windows的PatchGuard保护</p>
+<p>兼容XP, win7（x86,x64）（bootkit型底层木马兼容不同系统是挺有挑战的）</p>
+<p>自保护功能：感染木马后通过WinHex等工具查看到的MBR是正常的，而且无法修改被感染的MBR（不是简单的修改失败，而是会呈现MBR被修改成功的假象）</p>
+<p>从内核态向用户态的指定系统进程注入下载者DLL（根据系统是32位还是64位，会注入相应的32位和64位版本的DLL）</p>
+<p>启动过程中关闭指定进程</p>
+<p><section><section class="Powered-by-XIUMI V5"><section class=""><section class=""><section class=""></section></section></section></section></section></p>
+<h3 id="0x01木马工作原理"><a href="#0x01木马工作原理" class="headerlink" title="0x01木马工作原理"></a>0x01木马工作原理</h3><p><strong>1）木马植入程序运行后感染MBR和磁盘末尾未分区部分 （无文件，直接写入磁盘扇区）</strong></p>
+<p>感染的数据主要包括6个部分：</p>
+<p>感染的MBR；</p>
+<p>启动部分代码；</p>
+<p>x86驱动代码；x64驱动代码；</p>
+<p>x86下载者DLL；x64下载者DLL</p>
+<p>（前两部分未压缩，其他4部分进行了aPLib压缩）</p>
+<p><strong>2）重启电脑后感染的MBR接管执行：</strong></p>
+<p>a) 加载末尾20个扇区的前18个扇区（未压缩数据）到常规内存并执行</p>
+<p>b) 加载第19个扇区（原始MBR）到0x7C00</p>
+<p>c) 加载第20个扇区（配置信息：驱动、下载者代码的大小、payload所在扇区位置数据）到常规内存</p>
+<p>d) 调用Int15扫描常规内存，保存ARD结构体用于后续常规内存的分页扫描（查找ntoskrnl.exe映像）</p>
+<p>e) hook IVT表中int13向量（用于监控后续磁盘读操作）</p>
+<p>f) 跳转到0x7C00控制权转交原始MBR，系统继续启动</p>
+<p><pre class="lang:default decode:true "><em>ARD: AddressRange Descriptor Structure<br>+0：BaseAddrLow：基地址的低32位<br>+4：BaseAddrHigh：基地址的高32位<br>__+8：LengthLow：长度（字节）的低32位<br>+12：LengthHigh：长度（字节）的高32位<br>+16：Type：这个地址范围的地址类型（1：AddressRangeMemory；2：?AddressRangeReserved；Other：Undefined）</em></pre><br><strong>3）Int13钩子监视系统启动过程的读磁盘操作，当读取到kdcom.dll时接管执行（绕过PatchGuard的时机）</strong></p>
+<p>a）int13钩子根据读取文件的前0×200字节的校验值和PE特征码识别kdcom.dll，根据kdcom.dll PE的mechine字段判断系统为32位还是64位（32位和64位部分hook函数不同，整体流程一致）</p>
+<p>b）根据前面保存的ARD结构体扫描常规内存，找到ntoskrnl.exe基地址(根据文件hash值)，再根据ntoskrnl PE导出表hook函数IoCreateDriver（根据函数名hash值，64位系统hook MmMapIoSapce）</p>
+<p>c）控制权继续转交系统</p>
+<p><strong>4）IoCreateDriver钩子函数接管执行</strong></p>
+<p>a）先恢复IoCreateDriver钩子</p>
+<p>b）同前机制，根据ntoskrnl.exe基地址和PE导出表找到函数PsSetLoadImageNotifyRoutine</p>
+<p>c）调用PsSetLoadImageNotifyRoutine，注册回调函数</p>
+<p>d）控制权继续转交系统</p>
+<p><strong>5）系统加载模块时，上步PsSetLoadImageNotifyRoutine注册的回调函数接管执行</strong></p>
+<p>a）如前机制，得到NtReadFile，NtClose，NtOpenFile，ExAllocatePool函数指针</p>
+<p>b）申请8K内存，再打开Device\Harddisk0\Patition0，将驱动部分压缩数据读入其中</p>
+<p>c）申请0×3600字节内存，解压驱动数据到其中</p>
+<p>d）释放8K压缩数据内存，转入驱动代码部分执行</p>
+<p><strong>6）驱动部分压缩数据解压后的执行</strong></p>
+<p>a）根据实际加载的内存地址，对驱动部分的常量进行重定位</p>
+<p>b）InstallProcessNotifyCallback注册回调函数，回调函数监控当创建的进程如包含在屏蔽进程列表中时，直接return</p>
+<p>c）PsSetLoadImageNotifyRoutine注册回调函数，当创建进程包含在注入进程列表中时注入下载者DLL</p>
+<p>d）Hook NtReadFile, NtWriteFile, 当尝试读写感染的MBR或磁盘末尾未分区处，都返回正常值，隐藏被感染迹象。同样写入数据到此部分也会做相应保护，不会真正写入，但会呈现已被写入的假象</p>
+<p><section><section class="Powered-by-XIUMI V5"><section class=""><section class=""><section class=""></section></section></section></section></section></p>
+<h3 id="0x02内核向用户态进程注入代码原理"><a href="#0x02内核向用户态进程注入代码原理" class="headerlink" title="0x02内核向用户态进程注入代码原理"></a>0x02内核向用户态进程注入代码原理</h3><p>通过KeInitializeApc、KeInsertQueueApc（未文档化函数）插入内核APC回调函数、ExQueueWorkItem插入WorkItem回调函数，附加用户进程，将注入代码复制到用户进程内存空间，最后通过一个用户APC指向注入代码，并异步得到执行。</p>
+<p>详细流程如下：</p>
+<p><strong>1）PsSetLoadImageNotifyRoutine注册回调函数</strong></p>
+<p><strong>2）任意进程加载模块时，上步注册的回调函数得到执行</strong></p>
+<p>调用FsRtlIsNameInExpression，判断加载的是kernel32.dll，是则继续执行，否则返回。（The FsRtlIsNameInExpressionroutine determines whether a Unicode string matches the specified pattern.）</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EBWDJPoxfsNNrPdPrjKVTxQVfahrZcic7KIhMPqDC4JzgxZYdXuicwWF9Q/0?wx_fmt=jpeg" alt=""></p>
+<p>FsRtlAllocatePool申请0×34字节内核非分页内存，用于后续APC对象及回调参数。</p>
+<p>将kernel32.dll基址存入0×34字节的最后一个DWORD中（用于APC回调函数入参）</p>
+<p>调用KeGetCurrentThread得到当前线程对象（用于APC初始化的入参）</p>
+<p>调用KeInitializeApc、KeInsertQueueApc（未文档化函数）插入内核APC回调函数（执行后续流程）</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EBZA4jAhuss8QOaJiacqfgjQ9D47sqafYYaDltUNaK0CiaOsToZg5GTibVw/0?wx_fmt=jpeg" alt=""></p>
+<p><strong>3）上步插入的内核APC函数异步执行</strong></p>
+<p>调用ExFreePool释放APC结构体内存</p>
+<p>FsRtlAllocatePool申请0×40字节非分页内核内存（用于后续EVENT对象、WORKITEM对象及其参数）</p>
+<p>调用KeGetCurrentThread、PsGetCurrentProcess、PsGetCurrentThreadProcessId得到进程对象，线程对象，PID（存入上面申请的内存中，作为参数传给ExQueueWorkItem插入的回调函数）</p>
+<p>调用KeInitializeEvent，用于同步，等待WorkItem执行完毕</p>
+<p>调用ExQueueWorkItem插入后续流程的回调函数</p>
+<p>调用KeWaitForMutexObject等待上面的WorkItem回调函数执行完毕</p>
+<p>调用ExFreePool释放上面申请的0×40字节内核内存</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EBwP01Ef1USKnNoJqRReFdZFVWIoFD5ibs7vyib7ibyfgJEHN5RvO38ibR4w/0?wx_fmt=jpeg" alt=""></p>
+<p><strong>4）上步ExQueueWorkItem插入的回调函数执行</strong></p>
+<p>调用PsLookupProcessByProcessId得到EPROCESS</p>
+<p>调用PsGetProcessImageFileName通过EPROCESS得到进程文件名</p>
+<p>计算进程文件名的hash值与想要注入代码的进程列表做对比（包含在内继续执行，否则返回）</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EBiafNmJ0KQX5Hia84XGL2W2UwW103r95zOcicA4FR02qGr75iaIcFLDDakg/0?wx_fmt=jpeg" alt=""></p>
+<p>调用KeStackAttachProcess将当前线程附加到目标进程用户态地址空间</p>
+<p>配置入参数ClientId, ObjectAttributes后，调用ZwOpenProcess打开目标进程</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EBFOCYGz2tWTOnqUPuIkRadyRrYjeUHofxCOdOn49icRK7TknVLMBpDOA/0?wx_fmt=jpeg" alt=""></p>
+<p>调用ZwAllocateVirtualMemory申请目标进程用户态内存</p>
+<p>mov指令将内核中的注入代码拷贝到上步申请的用户态进程空间</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EBJwgwX2LxMUezM4C7YjJxyw6kgbrJoMgXGicIiaJW6nZtGCT15ibIpsYVw/0?wx_fmt=jpeg" alt=""></p>
+<p>调用FsRtlAllocatePool申请0×30字节内核非分页内存用于APC对象</p>
+<p>调用KeInitializeApc，KeInsertQueueApc插入用户APC（注入代码在用户态进程执行）</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EB29icjXia2pte2ULCQDfcIKfUoSWvGjaGyMrwv88QNlorNj7tEdy5jhnw/0?wx_fmt=jpeg" alt=""></p>
+<p>调用ZwClose，KeUnstackDetachProcess，ObDereferenceObject释放资源</p>
+<p>末尾调用KeSetEvent设置事件，用于同步，通知WorkItem执行完毕</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EBl1lSMcGtkGp0T03sHXBVEDbbw8KoGjXUpJCrTDBRDAnShhvZueEKTw/0?wx_fmt=jpeg" alt=""></p>
+<p><strong>5）上步插入的用户APC异步得到执行（注入的代码在目标进程执行）</strong></p>
+<p>至此，完成了内核态向目标用户进程注入代码并得到执行</p>
+<p><section><section class="Powered-by-XIUMI V5"><section class=""><section class=""><section class=""></section></section></section></section></section></p>
+<h3 id="0x03自保护原理"><a href="#0x03自保护原理" class="headerlink" title="0x03自保护原理"></a>0x03自保护原理</h3><p>木马自保护功能：当木马正常工作后，用WinHex等磁盘查看工具是看不到MBR及磁盘末尾被感染的迹象的，并且用工具对MBR或磁盘末尾进行修改后，呈现被改动的假象，但实际并未修改成功。木马代码依然存在在磁盘相应位置。</p>
+<p>通过hook NtReadFile和NtWriteFile两个函数实现的自保护功能</p>
+<p>当写数据到MBR或磁盘末尾处时，写入的数据存入内存而不真正写入磁盘，当读取磁盘MBR或末尾时，不真实读取，而用之前暂存的数据代替，呈现数据被写入的假象，实现自我保护</p>
+<p>内存0×20000（128k）</p>
+<p><img src="https://mmbiz.qlogo.cn/mmbiz/aE2cYq7AtD0Ehe6oQSyhSQwdD5b3D5EB4Qd9BvYr4hYS1HYcxqP3FWwdwgNzJ0RRXoDPe5JT7Nm4D74aJYev7w/0?wx_fmt=png" alt=""></p>
+<p><strong>（1）NtWriteFile钩子函数</strong></p>
+<p>a）确认写入的数据是否在MBR处或磁盘末尾0xFC00处</p>
+<p>b）当向MBR写入数据时：将写入的数据保存到上表内存中0×400处（假MBR），以及更新0×200（原始MBR）和0×600（染后后MBR）的末尾0x4C的数据信息（只更新MBR中分区表等数据信息，而不改变MBR中的代码）；修改磁盘MBR处后0x4C的分区表等数据，修改磁盘倒数第2个扇区（备份的原始MBR）的后0x4C数据部分</p>
+<p>c）当向磁盘末尾0xFC00写入数据时：计算写入数据与末尾0xFC00的交叉情况，保存写入的数据到0×10400处（假的磁盘末尾数据）</p>
+<p><strong>（2）NtReadFile钩子函数</strong></p>
+<p>a）确认读取的数据是否在MBR处或磁盘末尾0xFC00处</p>
+<p>b）当读取MBR时，用上表中0×400处的假MBR代替</p>
+<p>c）当读取磁盘末尾时，用上表中0×10400处假数据代</p>
+<p><section><section class="Powered-by-XIUMI V5"><section class=""><section class=""><section class=""></section></section></section></section></section></p>
+<h3 id="0x04结语"><a href="#0x04结语" class="headerlink" title="0x04结语"></a>0x04结语</h3><p>这是几年前逆向分析的基于MBR的bootkit型样本（来自国外），运行相当稳定（也尝试过改造来从BIOS启动，但主板芯片的差异，以及植入BIOS的程序兼容性很难保证，最终稳定性不好）该样本当时未在国内传播，逆向老外的样本过程中发现各种细节处理的非常到位，师夷长技以自强 。</p>
+</div><div class="tags"></div><div class="post-nav"><a href="/2016/08/19/e7-94-a8irc-e5-8d-8f-e8-ae-ae-e4-b8-8ephp-e6-9c-a8-e9-a9-ac-e8-81-8a-e5-a4-a9/" class="pre">用IRC协议与PHP木马“聊天”</a><a href="/2016/07/23/cknife-disclaimer/" class="next">Cknife Disclaimer</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank" class="search-form"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://yoursite.com"/></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/IOS/">IOS</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/">WEB</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/安全工具/">安全工具</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/渗透测试/">渗透测试</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/">二进制</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/原创漏洞/">原创漏洞</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/安卓/">安卓</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/原创漏洞/">原创漏洞</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/原创漏洞/安卓/">安卓</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/安全工具/">安全工具</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/安卓/">安卓</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/未分类/">未分类</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/移动安全/">移动安全</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/android/" style="font-size: 15px;">android</a> <a href="/tags/android-drozer/" style="font-size: 15px;">android drozer</a> <a href="/tags/Cknife-Disclaimer/" style="font-size: 15px;">Cknife Disclaimer</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2017/08/04/github-e4-bf-a1-e6-81-af-e6-b3-84-e9-9c-b2-e5-8d-87-e7-ba-a7-e7-89-88-e6-a1-88-e4-be-8b/">Github信息泄露升级版案例</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/07/14/684/">CVE-2016-10277在MOTO X手机上的漏洞利用实践</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/27/e8-93-9d-e7-89-99app-e6-bc-8f-e6-b4-9e-e7-b3-bb-e5-88-97-e5-88-86-e6-9e-90-e4-b9-8b-e4-ba-8ccve-2017-0639/">蓝牙App漏洞系列分析之二</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/23/Bluetooth-Vul-3/">蓝牙App漏洞系列分析之三</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/14/e5-90-8c-e5-bd-a2-e5-bc-82-e4-b9-89-e5-ad-97-e9-92-93-e9-b1-bc-e6-94-bb-e5-87-bb-ef-bc-8c-e9-92-89-e9-92-89-e4-b8-ad-e6-8b-9b/">“同形异义字”钓鱼攻击，钉钉中招</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/12/Bluetooth-Vul-2/">蓝牙App漏洞系列分析之二</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/06/e5-88-86-e4-ba-ab-e4-b8-80-e7-a7-8d-e5-8f-af-e5-85-b3-e9-97-ad-e5-a4-a7-e5-a4-9a-e6-95-b0-e6-9d-80-e8-bd-af-e7-9a-84-e6-8a-80-e6-9c-af-ef-bc-88-e5-af-b9360-e5-ae-89-e5-85-a8-e5-8d-ab-e5-a3-ab/">分享一种可关闭大多数杀软的技术（对360安全卫士已验证成功）</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/15/e8-93-9d-e7-89-99app-e6-bc-8f-e6-b4-9e-e7-b3-bb-e5-88-97-e5-88-86-e6-9e-90-e4-b9-8b-e4-b8-80/">蓝牙App漏洞系列分析之一</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/14/e9-a6-96-e5-8f-91-wannacry-e5-8b-92-e7-b4-a2-e8-bd-af-e4-bb-b6-e6-af-8d-e4-bd-93-e4-b8-bb-e7-a8-8b-e5-ba-8f-e9-80-86-e5-90-91-e5-88-86-e6-9e-90-ef-bc-88-e5-90-ab-e4-b8-b4-e6-97-b6-e8-a7-a3-e5-86-b3/">首发 | Wannacry勒索软件母体主程序逆向分析（含临时解决方案自动化工具</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/04/Bluetoooth_Vul_1/">蓝牙App漏洞系列分析之一</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2017 <a href="/." rel="nofollow">MS509 Team.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a id="rocket" href="#top" class="show"></a><script type="text/javascript" src="/js/totop.js?v=0.0.0" async></script><script type="text/javascript" src="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=0.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.css"><script type="text/javascript" src="/js/codeblock-resizer.js?v=0.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=0.0.0"></script></div></body></html>
