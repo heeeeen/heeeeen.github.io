@@ -1,0 +1,403 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description"><title>Drozer_modules | MS509 Team</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=0.0.0"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/normalize/7.0.0/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/pure-min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">Drozer_modules</h1><a id="logo" href="/.">MS509 Team</a><p class="description">Mission Studio</p></div><div id="nav-menu"><a href="/." class="current"><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div id="layout" class="pure-g"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">Drozer_modules</h1><div class="post-meta">Oct 24, 2015<span> | </span><span class="category"><a href="/categories/移动安全/">移动安全</a></span></div><div class="post-content"><h1 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h1><p>drozer是MWR Labs开发的一款Android安全测试框架。是目前最好的Android安全测试工具之一。drozer提供了命令行交互式界面，使用drozer进行安全测试，用户在自己的console端输入命令，drozer会将命令发送到Android设备上的drozer agent代理程序执行。drozer采用了模块化的设计，用户可以定制开发需要的测试模块。编写drozer模块主要涉及python模块及dex模块。python模块在drozer console端运行，类似于metasploit中的插件，可以扩展drozer console的测试功能。dex模块是java编写的android代码，类似于android的dex插件，在android手机上运行，用于扩展drozer agent的功能。</p>
+<h2 id="0x00-简单的drozer模块demo代码"><a href="#0x00-简单的drozer模块demo代码" class="headerlink" title="0x00 简单的drozer模块demo代码"></a>0x00 简单的drozer模块demo代码</h2><p>首先看看drozer wiki给出的demo，该模块的功能就是在android设备上反射调用java.util.Random类生成一个随机数并返回：</p>
+<pre><code> from drozer.modules import Module
+
+class GetInteger(Module):
+
+    name = &quot;&quot;
+    description = &quot;&quot;
+    examples = &quot;&quot;
+    author = &quot;Joe Bloggs (@jbloggs)&quot;
+    date = &quot;2012-12-21&quot;
+    license = &quot;BSD (3-clause)&quot;
+    path = [&quot;exp&quot;, &quot;test&quot;]
+
+    def execute(self, arguments):
+        random = self.new(&quot;java.util.Random&quot;)
+        integer = random.nextInt()
+
+        self.stdout.write(&quot;int: %d\n&quot; % integer)
+</code></pre><p>GetInteger类就是一个简单的drozer模块，它继承自drozer提供的模块基类Module。每个继承了Module的类都对应着一个drozer模块，模块具体实现的功能则是在类中重写excute函数，实现新的功能。在drozer console中执行以下命令就可以运行该模块了：  </p>
+<pre><code>dz&gt; run exp.test.getinteger
+</code></pre><p>运行效果如下：   </p>
+<p><img src="./1.png" alt="1"></p>
+<p>drozer 通过Module类的metadata来配置和管理每个模块,因此模块编写时需要包含以下 metadata信息:        </p>
+<pre><code>name          模块的名称
+description   模块的功能描述 
+examples      模块的使用示例
+author        作者
+date          日期
+license       许可
+path          描述模块命令空间
+</code></pre><p>这些信息中比较重要的就是path变量，它描述了模块在drozer namespace中的路径，结合对应的classname可以唯一确定drozer中的模块。例如demo中的path = [“exp”, “test”],类名为GetInteger，那么在drozer console中该模块就以exp.test.getinteger唯一确定。需要注意的是，尽管类的名字有大小写之分，但运行该模块的时候，drozer console中的名字都为小写。</p>
+<h2 id="0x01-drozer模块仓库的创建及模块安装"><a href="#0x01-drozer模块仓库的创建及模块安装" class="headerlink" title="0x01 drozer模块仓库的创建及模块安装"></a>0x01 drozer模块仓库的创建及模块安装</h2><p>drozer模块安装有两种方法，一种是直接在repository中按照python包管理的方法新建目录结构，将python文件放入相应目录中，另一种是在drozer console中通过module install命令直接安装模块。</p>
+<p>这两种方法都必须先在本地创建一个drozer 的repository目录，可以直接在drozer console中通过命令创建：</p>
+<pre><code>dz&gt; module repository create [/path/to/repository]
+</code></pre><p>也可以在~/.drozer_config文件中指定本地repository目录</p>
+<pre><code>[repositories]    
+/path/to/repository  =  /path/to/repository
+</code></pre><p>创建好本地repository后就可以安装自己的模块了。两种安装方法：</p>
+<p>1) 按照python包管理的方式，在本地repository目录下创建目录exp,新建__int__.py空白文件，然后将Python模块源码放入exp目录即可。例如将test.py放入exp目录下，test.py的内容如下：</p>
+<pre><code> from drozer.modules import Module
+
+class GetInteger(Module):
+
+    name = &quot;&quot;
+    description = &quot;&quot;
+    examples = &quot;&quot;
+    author = &quot;Joe Bloggs (@jbloggs)&quot;
+    date = &quot;2012-12-21&quot;
+    license = &quot;BSD (3-clause)&quot;
+    path = [&quot;exp&quot;, &quot;test&quot;]
+
+    def execute(self, arguments):
+        random = self.new(&quot;java.util.Random&quot;)
+        integer = random.nextInt()
+
+        self.stdout.write(&quot;int: %d\n&quot; % integer)
+</code></pre><p>安装好模块之后即可在drozer console端通过命令run exp.test.getinteger运行该模块了。</p>
+<p>2) 通过drozer console中的命令module install 安装。首先将编辑好的python模块源文件命名为 exp.test2,文件的内容同上。在drozer console中执行   </p>
+<pre><code>dz&gt; module install  [/path/to/exp.test2]      
+</code></pre><p>执行成功后则可以在本地repository目录下exp目录中看到生成了test2.py文件，内容和原来的exp.test2文件一致。安装成功后及可执行该模块了。module install除了可以安装本地仓库的模块外，还可以远程安装gitbub上的模块，地址为    </p>
+<pre><code>https://raw.github.com/mwrlabs/drozer-modules/repository/
+</code></pre><p>例如运行</p>
+<pre><code>dz&gt;module install jubax.javascript     
+</code></pre><p>将远程下载并安装scanner.misc.checkjavascriptbridge模块，安装完成后执行</p>
+<pre><code>dz&gt; run scanner.misc.checkjavascriptbridge
+</code></pre><p>就可以运行该模块，该模块的功能是检查webview中addJavascriptInterface的使用是否存在安全隐患。</p>
+<h2 id="0x02-利用drozer提供的API扩展功能"><a href="#0x02-利用drozer提供的API扩展功能" class="headerlink" title="0x02 利用drozer提供的API扩展功能"></a>0x02 利用drozer提供的API扩展功能</h2><p>drozer封装了android中大部分API功能，使得能够在python中方便的使用这些API扩展功能，发挥drozer及python的强大威力。</p>
+<p>1）利用反射直接与Dalvik虚拟机交互，其实就是Python直接在写android代码，非常简单方便。drozer主要是利用了drozer agent代理实现相关功能，实例化某个类的代码如下：   </p>
+<pre><code>my_object = self.new(&quot;some.package.MyClass&quot;)
+</code></pre><p>例如drozer.android模块中封装了Intent类，用户可以通过如下方式构造需要的Intent：</p>
+<pre><code>someintent = android.Intent(action=act, category=cat, data_uri=data, component=comp, extras=extr, flags=flgs)
+</code></pre><p>然后通过intent打开某个activity: </p>
+<pre><code>self.getContext().startActivity(someintent)
+</code></pre><p>2) drozer针对比较常用的功能还二次封装了很多python的mixins工具类，提供了更简单易用的API，这些mixins都在drozer.modules.common包中：</p>
+<pre><code>Assets
+BusyBox
+ClassLoader
+FileSystem
+Filters
+PackageManager
+Provider
+ServiceBinding
+Shell
+Strings
+SuperUser
+TableFormatter
+ZipFile
+</code></pre><p>例如FileSystem类提供了访问android手机文件系统的接口，可以方便地读写、创建及删除andoid手机上的目录和文件。ZipFile类提供了解压zip文件的功能。<br>为了使用这些mixin类提供的功能，在模块中可以直接继承这些类就可以了：</p>
+<pre><code>from drozer.modules import common, Module
+
+class MyModule(Module, common.FileSystem, common.ZipFile):
+           ……
+           ……
+       self.deleteFile(“somepath”)
+           ……
+           ……
+       dex_file = self.extractFromZip(&quot;classes.dex&quot;, path, self.cacheDir())
+</code></pre><p>其中，self.deleteFile来自FileSystem类，self.extractFromZip来自ZipFile类。</p>
+<p>##0x03 实现find port及find IP模块</p>
+<p>1) app开放端口查找模块</p>
+<p>Android app通常会监听某些端口进行本地IPC或者远程网络通信，但是这些暴露的端口却代表了潜在的本地或远程攻击面，具体可以参考大牛的文章：</p>
+<p><a href="http://drops.wooyun.org/mobile/6973" target="_blank" rel="external">浅谈Android开放网络端口的安全风险</a></p>
+<p>文章中提供了查找开放端口及对应app的python脚本，我们将其重写为drozer模块，方便测试时使用：</p>
+<pre><code>from drozer.modules import Module,common
+import re
+
+class findport(Module,common.Shell):
+
+    name = &quot;&quot;
+    description = &quot;find open port in android&quot;
+    examples = &quot;run exp.work.findport&quot;
+    author = &quot;thor@ms509&quot;
+    date = &quot;2015-12-02&quot;
+    license = &quot;BSD (3-clause)&quot;
+    path = [&quot;exp&quot;,&quot;work&quot;]
+
+    def toHexPort(self,port):
+        hexport = str(hex(int(port)))
+        return hexport.strip(&apos;0x&apos;).upper()     
+
+    def finduid(self,protocol, entry):
+        if (protocol==&apos;tcp&apos; or protocol==&apos;tcp6&apos;):
+            uid = entry.split()[-10]
+
+        else: # udp or udp6
+            uid = entry.split()[-6]
+
+        try: 
+            uid = int(uid)
+        except:
+            return -1     
+        if (uid &gt; 10000): # just for non-system app
+            return &apos;u0_a&apos;+str(uid-10000) 
+        else:
+            return -1
+
+    def execute(self, arguments):        
+
+        proc_net = &quot;/proc/net/&quot;      
+        ret = self.shellExec(&quot;netstat -anp | grep -Ei &apos;listen|udp*&apos;&quot;)
+        list_line = ret.split(&apos;\n&apos;)
+        apps = []
+        strip_listline = []
+        #pattern = re.compile(&quot;^Proto&quot;) # omit the first line
+
+        for line in list_line:              
+                if (line != &apos;&apos;):               
+                   socket_entry = line.split()
+                   protocol = socket_entry[0]  
+                   port = socket_entry[3].split(&apos;:&apos;)[-1]
+                   grep_appid = &apos;grep  &apos;+ self.toHexPort(port) + &apos; &apos; + proc_net + protocol                    
+
+                   net_entry = self.shellExec(grep_appid)                         
+                   uid = self.finduid(protocol, net_entry)
+
+                   if (uid == -1): 
+                       continue
+
+                   applist = self.shellExec(&apos;ps | grep &apos; + uid).split()    
+                   app = applist[8]
+                   apps.append(app)
+                   strip_listline.append(line)
+
+        itapp= iter(apps)
+        itline=iter(strip_listline)
+
+        self.stdout.write(&quot;Proto  Recv-Q Send-Q  Local Address        Foreign Address        State            APP\r\n&quot;)
+        try:
+            while True:
+                self.stdout.write( itline.next() + &apos; &apos;*10 + itapp.next() + &apos;\n&apos;)
+
+        except StopIteration:
+            pass
+
+        self.stdout.write(&apos;\n&apos;)
+</code></pre><p> 该模块的主要功能都是在findport类中的execute函数中实现，查找开放端口及app的方法和原来文章中的一样，这里主要用到了drozer提供的common.Shell类，用于在android设备上执行shell命令：    </p>
+<pre><code>ret = self.shellExec(&quot;netstat -anp | grep -Ei &apos;listen|udp*&apos;&quot;) 
+</code></pre><p> 在drozer console中直接运行如下命令即可：       </p>
+<pre><code>dz&gt; run exp.work.findport    
+</code></pre><p> 运行效果如下：<br> <img src="3.png" alt="image"></p>
+<p>2）app中IP地址扫描模块</p>
+<p>drozer的scanner.misc.weburls提供了扫描app中http及https URL地址的功能，仿照该模块的功能，我们实现了app中IP地址的扫描模块，这些收集到的IP地址可以在web渗透测试中使用：</p>
+<pre><code>import re
+from pydiesel.reflection import ReflectionException
+from drozer.modules import common, Module 
+
+class findips(Module, common.FileSystem, common.PackageManager, common.Provider, common.Strings, common.ZipFile):
+
+    name = &quot;Find IPs specified in packages.&quot;
+    description = &quot;&quot;&quot;
+    Find IPs in apk files
+    &quot;&quot;&quot;
+    examples = &quot;&quot;
+    author = &quot;7h0r@ms509&quot;
+    date = &quot;2015-12-9&quot;
+    license = &quot;&quot;
+    path = [&quot;exp&quot;, &quot;server&quot;]
+    permissions = [&quot;com.mwr.dz.permissions.GET_CONTEXT&quot;]
+
+    def add_arguments(self, parser):
+        parser.add_argument(&quot;-a&quot;, &quot;--package&quot;, help=&quot;specify a package to search&quot;)
+
+    def execute(self, arguments):
+        self.ip_matcher = re.compile(r&quot;((?:(?:25[0-5]|2[0-4]\d|((1\d{2})|([1-9]?\d)))\.){3}(?:25[0-5]|2[0-4]\d|((1\d{2})|([1-9]?\d))))&quot;)
+        if arguments.package != None:
+            self.check_package(arguments.package, arguments)
+        else:
+            for package in self.packageManager().getPackages(common.PackageManager.GET_PERMISSIONS):
+                try:
+                    self.check_package(package.packageName, arguments)
+                except Exception, e:
+                    print str(e)
+
+    def check_package(self, package, arguments):
+        self.deleteFile(&quot;/&quot;.join([self.cacheDir(), &quot;classes.dex&quot;]))
+        ips = []
+
+        for path in self.packageManager().getSourcePaths(package):
+            strings = []
+            if &quot;.apk&quot; in path:
+                dex_file = self.extractFromZip(&quot;classes.dex&quot;, path, self.cacheDir())
+                if dex_file != None:
+                    strings = self.getStrings(dex_file.getAbsolutePath())
+
+                    dex_file.delete()
+                    strings += self.getStrings(path.replace(&quot;.apk&quot;, &quot;.odex&quot;)) 
+            elif (&quot;.odex&quot; in path):
+                strings = self.getStrings(path)
+            else:
+                continue
+
+            for s in strings:
+                m = self.ip_matcher.search(s)
+                if m is not None:
+                    ips.append(s)
+
+            if len(ips) &gt; 0:
+                self.stdout.write(&quot;%s\n&quot; % str(package))
+
+            for ip in ips:
+                    self.stdout.write(&quot;  %s\n&quot; % ip)
+
+            if len(ips) &gt; 0 :
+                self.stdout.write(&quot;\n&quot;)
+</code></pre><p>add_arguments函数是drozer提供的接口，用于添加命令行参数，这里我们添加了–package参数，用于指定app名称，如果没有指定–package参数，那么默认会查找所有app中的IP地址，比较耗时。check_package函数主要实现指定app扫描IP地址的功能，该函数首先从app相关目录中查找apk文件、odex文件，如果是apk文件则从apk文件中解压出classes.dex文件：</p>
+<pre><code>for path in self.packageManager().getSourcePaths(package):
+    strings = []
+    if &quot;.apk&quot; in path:
+        dex_file = self.extractFromZip(&quot;classes.dex&quot;, path, self.cacheDir())
+</code></pre><p>然后从得到的dex、odex文件中获取到所有的strings:</p>
+<pre><code>strings = self.getStrings(path)
+</code></pre><p>这里的getStrings是drozer提供的API，实现了类似linux下strings命令的功能。</p>
+<p>找到app中的所有strings后再用re匹配得到相应的IP地址：</p>
+<pre><code>for s in strings:
+    m = self.ip_matcher.search(s)
+    if m is not None:
+        ips.append(s)
+</code></pre><p>ip_matcher的正则表达式为：</p>
+<pre><code>self.ip_matcher = re.compile(r&quot;((?:(?:25[0-5]|2[0-4]\d|((1\d{2})|([1-9]?\d)))\.){3}(?:25[0-5]|2[0-4]\d|((1\d{2})|([1-9]?\d))))&quot;)
+</code></pre><p>最后，在drozer console中通过如下命令运行该模块：</p>
+<pre><code>dz&gt; run exp.server.findips -a com.dianping.v1
+</code></pre><p>运行效果如下所示：</p>
+<p><img src="4.png" alt="image"></p>
+<h2 id="0x04-编写dex插件"><a href="#0x04-编写dex插件" class="headerlink" title="0x04 编写dex插件"></a>0x04 编写dex插件</h2><p>除了利用drozer以python代码形式提供的API，用户还可以用java代码编写dex插件。<br>例如下面的java代码就可以编译为drozer的dex插件：</p>
+<pre><code>import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+import android.util.Base64;
+import android.util.Log;
+import android.widget.Toast;
+import android.net.Uri;
+import android.content.ContentResolver;
+import android.database.Cursor;
+import android.provider.ContactsContract;
+import android.content.Context;
+
+
+public class dextest {
+
+  private static final int BUFFER_SIZE = 4096;
+
+
+    public static String test(Context c, String number) {
+
+            String name = null;
+            Uri uri = Uri.parse(&quot;content://com.android.contacts/data/phones/filter/&quot; + number);
+            ContentResolver resolver = c.getContentResolver();
+            Cursor cursor = resolver.query(uri, new String[]{android.provider.ContactsContract.Data.DISPLAY_NAME}, null, null, null);
+            if (cursor.moveToFirst()) {
+                name = cursor.getString(0);
+                Log.d(&quot;drozer&quot;, name);
+            }
+            cursor.close();
+
+
+         Log.d(&quot;drozer&quot;,&quot;this is a drozer dex module!&quot;);
+         return &quot;hello world! this is a test! &quot; + number + &quot;: &quot; + name;
+  }
+
+}
+</code></pre><p>首先我们将该java文件编译为class文件：</p>
+<pre><code>javac -cp lib/android.jar dextest.java
+</code></pre><p>然后用android sdk提供的dx工具将class文件转换为dex文件：</p>
+<pre><code>dx  --dex --output=dextest.apk dextest*.class
+</code></pre><p>最后将生成的dextest.apk文件放到drozer的modules/common目录下，在编写drozer模块时可以通过以下方式调用该dex插件：</p>
+<pre><code>dextest = self.loadClass(&quot;common/dextest.apk&quot;, &quot;dextest&quot;)
+self.stdout.write(&quot;[color red]get string from dex plugin: %s  [/color]\n&quot; % dextest.test(self.getContext(),&quot;181&quot; ) )   
+</code></pre><p>该测试插件根据提供的部分电话号码去匹配手机通讯录中的联系人，并返回匹配到的联系人姓名，执行效果如下:<br><img src="./2.png" alt="2"></p>
+<p>dex插件是由drozer上传到android手机上加载执行，它的作用还是为drozer模块提供更方便易用的接口，扩展更多的功能。由于dex插件是Java编写的原生android代码，在执行效率上比通过反射调用更高。drozer的modules/common目录下包含了多个dex插件的源码，有兴趣的同学可以自己查看。</p>
+<h2 id="0x05-drozer模块的reload及动态加载问题"><a href="#0x05-drozer模块的reload及动态加载问题" class="headerlink" title="0x05 drozer模块的reload及动态加载问题"></a>0x05 drozer模块的reload及动态加载问题</h2><p>编写drozer module难免会涉及到调试的问题，drozer console提供了debug选项，会在console中打印异常信息，但是比较麻烦的是，修改module源码后必须要重启drozer console才能生效。<br>查看drozer源码，发现drozer在debug模式下提供了reload命令，但是测试了下，在mac下并没有用，还是要重启console才能生效。仔细研究drozer loader.py的相关源码：  </p>
+<pre><code>def all(self, base):
+     &quot;&quot;&quot;
+     Loads all modules from the specified module repositories, and returns a  collection of module identifiers.
+     &quot;&quot;&quot;
+
+    if(len(self.__modules) == 0):
+        self.__load(base)
+
+    return sorted(self.__modules.keys())
+
+def get(self, base, key):
+    &quot;&quot;&quot;
+    Gets a module implementation, given its identifier.
+    &quot;&quot;&quot;
+
+    if(len(self.__modules) == 0):
+        self.__load(base)
+
+    return self.__modules[key]
+
+def reload(self):
+    self.__modules = {}
+</code></pre><p>reload命令将self.__modules置为空，在get中按理说就会重新加载所有的drozer模块。但是在mac下始终无法实现该功能，其他平台未做测试。这里就涉及到python模块的import及reload机制问题，在网上查找到python的reload机制一些解释：</p>
+<pre><code>reload会重新加载已加载的模块，但原来已经使用的实例还是会使用旧的模块， 而新生产的实例会使用新的模块, reload后还是用原来的内存地址；不能支持from。。import。。格式的模块进行重新加载。
+
+http://blog.csdn.net/five3/article/details/7762870
+</code></pre><p>猜测可能就是这个问题，虽然用python的reload机制可以重新加载模块，但是以前使用的模块可能还是在使用中，导致修改的源码没有生效。<br>为什么不在执行时动态加载模块呢？这样可以保证加载的模块源码是最新的。<br>分析了drozer相关的所有源码，终于在session.py中找到实例化模块类的代码：</p>
+<pre><code>def __module(self, key):
+   &quot;&quot;&quot;
+   Gets a module instance, by identifier, and initialises it with the
+   required session parameters.
+   &quot;&quot;&quot;
+
+   module = None
+
+   try:
+       module = self.modules.get(self.__module_name(key))
+   except KeyError:
+       pass
+
+   if module == None:
+       try:
+           module = self.modules.get(key)
+       except KeyError:
+           pass
+
+   if module == None:
+       raise KeyError(key)
+   else:
+       return module(self)
+</code></pre><p>该函数的功能就是根据模块类的key实例化该模块，从而运行该模块。因此，我们可以在这里实现动态加载要运行的模块类，放弃已经加载的模块：</p>
+<pre><code>def __module(self, key):
+
+   &quot;&quot;&quot;
+   Gets a module instance, by identifier, and initialises it with the
+   required session parameters.
+   &quot;&quot;&quot;
+
+   module = None
+
+   try:
+       module = self.modules.get(self.__module_name(key))
+   except KeyError:
+       pass
+
+   if module == None:
+       try:
+           module = self.modules.get(key)
+       except KeyError:
+           pass
+
+   if module == None:
+       raise KeyError(key)
+   else:
+
+       #reload module
+       mod = reload(sys.modules[module.__module__])
+
+       module_class_name = module.__name__
+       module_class = getattr(mod,module_class_name)  #get module class object
+       return module_class(self)
+</code></pre><p>关键的代码如下：</p>
+<pre><code>#reload module   
+mod = reload(sys.modules[module.__module__])
+
+module_class_name = module.__name__
+module_class = getattr(mod,module_class_name)  #get module class object
+return module_class(self)
+</code></pre><p>首先使用python的reload函数重新加载指定的模块，然后再在重新加载的模块中查找到drozer模块关联的类，最后实例化并返回。只需添加几行代码便可实现动态加载模块类，这样调试的时候就不用每次重启drozer console了。这里只是提供了一种简单的实现动态加载模块的方法，主要是方便模块的编写及测试。</p>
+</div><div class="tags"><a href="/tags/android-drozer/">android drozer</a></div><div class="post-nav"><a href="/2017/05/04/Bluetoooth_Vul_1/" class="pre">蓝牙App漏洞系列分析之一</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank" class="search-form"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://yoursite.com"/></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/移动安全/">移动安全</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/android/" style="font-size: 15px;">android</a> <a href="/tags/android-drozer/" style="font-size: 15px;">android drozer</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2017/06/23/Bluetooth-Vul-3/">蓝牙App漏洞系列分析之三</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/12/Bluetooth-Vul-2/">蓝牙App漏洞系列分析之二</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/04/Bluetoooth_Vul_1/">蓝牙App漏洞系列分析之一</a></li><li class="post-list-item"><a class="post-list-link" href="/2015/10/24/Drozer-modules/">Drozer_modules</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2017 <a href="/." rel="nofollow">MS509 Team.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a id="rocket" href="#top" class="show"></a><script type="text/javascript" src="/js/totop.js?v=0.0.0" async></script><script type="text/javascript" src="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=0.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.css"><script type="text/javascript" src="/js/codeblock-resizer.js?v=0.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=0.0.0"></script></div></body></html>
