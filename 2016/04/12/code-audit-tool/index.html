@@ -1,0 +1,79 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description"><title>代码审计利器之自动化工具 | MS509 Team</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=0.0.0"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/normalize/7.0.0/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/pure-min.css"><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/pure/1.0.0/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.bootcss.com/font-awesome/4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">代码审计利器之自动化工具</h1><a id="logo" href="/.">MS509 Team</a><p class="description">Mission Studio</p></div><div id="nav-menu"><a href="/." class="current"><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a></div></div><div id="layout" class="pure-g"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">代码审计利器之自动化工具</h1><div class="post-meta">Apr 12, 2016<span> | </span><span class="category"><a href="/categories/WEB/">WEB</a><a href="/categories/WEB/安全工具/">安全工具</a></span></div><div class="post-content"><p>作者：IsTr33</p>
+<h3 id="0x01-简介"><a href="#0x01-简介" class="headerlink" title="0x01 **简介**"></a><strong>0x01 **</strong>简介**</h3><p>工欲善其事，必先利其器。在源代码的静态安全审计中，使用自动化工具代替人工漏洞挖掘，可以显著提高审计工作的效率。学会利用自动化代码审计工具，是每一个代码审计人员必备的能力。在学习PHP源代码审计的过程中，本人搜集使用了多款自动化工具。本文将简要介绍其中三款比较实用的工具：RIPS、VCG、Fortify SCA。<a id="more"></a></p>
+<p>RIPS是一款开源的，具有较强漏洞挖掘能力的自动化代码审计工具。它使用PHP语言编写的，用于静态审计PHP代码的安全性。</p>
+<p>VCG（VisualCodeGrepper），是一款支持C/C++、C#、VB、PHP、Java和PL/SQL的免费代码安全审计工具。它是一款基于字典的检测工具，功能简洁，易于使用。</p>
+<p>Fortify SCA（Static Code Analyzer）是由Fortify软件公司（已被惠普收购）开发的一款商业版源代码审计工具。它使用独特的数据流分析技术，跨层跨语言地分析代码的漏洞产生，目前支持所有的主流开发语言。</p>
+<p>本文结合一个应用实例的分析，介绍三款工具的使用方法以及特性。</p>
+<h3 id="0x02-RIPS"><a href="#0x02-RIPS" class="headerlink" title="0x02 RIPS"></a><strong>0x02 RIPS</strong></h3><p>RIPS的主要功能特点如下：</p>
+<ul>
+<li>能够检测XSS、SQL注入、文件泄露、本地/远程文件包含、远程命令执行以及更多种类型的漏洞。</li>
+<li>有5种级别选项用于显示以及辅助调试扫描结果。</li>
+<li>标记存在漏洞的代码行。</li>
+<li>对变量高亮显示。</li>
+<li>在用户定义函数上悬停光标可以显示函数调用。</li>
+<li>在函数定义和调用之间灵活跳转。</li>
+<li>详细列出所有用户定义函数（包括定义和调用）、所有程序入口点（用户输入）和所有扫描过文件（包括include的文件）。</li>
+<li>以可视化的图表展示源代码文件、包含文件、函数及其调用。</li>
+<li>仅用几个鼠标点击就可以使用CURL创建针对检测到漏洞的EXP实例。</li>
+<li>详细列出每个漏洞的描述、举例、PoC、补丁和安全函数。</li>
+<li>7种不同的语法高亮显示模式。</li>
+<li>使用自顶向下或者自底向上的方式追溯显示扫描结果。</li>
+<li>一个支持PHP的本地服务器和浏览器即可满足使用需求。</li>
+<li>正则搜索功能。<br>最新版本的RIPS是0.55，下载链接如下：</li>
+</ul>
+<p><a href="https://sourceforge.net/projects/rips-scanner/" target="_blank" rel="external">https://sourceforge.net/projects/rips-scanner/</a></p>
+<p>解压下载的zip文件到Web服务器网站目录下即可。在浏览器中输入Web服务器地址和对应目录，RIPS工具的用户使用界面如下：</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/1.png" alt="1"> 最上方是所有功能按钮菜单。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/2.png" alt="2"></p>
+<p>扫描任务结束后，菜单中会出现4个新的按钮，分别用来显示/隐藏4个扫描结果窗口：被扫描文件、用户输入点、扫描状态信息和被扫描函数。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/3.png" alt="3"></p>
+<p>现在以一个简单的实例来说明RIPS的使用方法，下载链接如下：</p>
+<p><a href="http://jsdx.down.chinaz.com/201603/webjoker_v2.2.0.zip" target="_blank" rel="external">http://jsdx.down.chinaz.com/201603/webjoker_v2.2.0.zip</a></p>
+<p>该PHP应用程序用来统计某网站的用户访问情况，登录到程序后台可以查看详细访问信息。将下载后的程序解压，在RIPS的“path/file”选项中填入程序解压目录，其它选项保持默认，点击“scan”按钮开始扫描任务。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/4.png" alt="4"></p>
+<p>扫描结束后，点击window菜单的4个按钮可以显示任务的详细情况。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/5.png" alt="5"></p>
+<p>正文部分显示扫描出漏洞的详细情况，点击“hide all”按钮可以查看/隐藏每个文件的详细漏洞结果列表。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/6.png" alt="6"></p>
+<p>让我们来看其中某一个漏洞详情，init.php源代码中存在SQL注入漏洞。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/7.png" alt="7"></p>
+<p>未过滤的$procookie参数直接被cheakcookie()函数调用。将光标悬停在cheakcookie()函数上方，即可显示cheakcookie()函数是如何定义的。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/8.png" alt="8"></p>
+<p>cheakcookie()函数在main.php文件中被定义，可以看出未被过滤的参数直接带入SQL语句被执行。</p>
+<p>在漏洞的详细情况中显示$procookie参数由$_COOKIE[count_admin]传递，从init.php源代码的上下文可知，该参数是为了后台登录的cookie值校验。当count_admin值无法匹配数据库中的数据时，校验失败。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/9.png" alt="9"></p>
+<p>将POST包中Cookie中的count_admin改为“’ or 1=1 #”，即可绕过cookie校验，直接进入后台。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/10.png" alt="10"></p>
+<h3 id="0x03-VCG"><a href="#0x03-VCG" class="headerlink" title="0x03 VCG"></a><strong>0x03 VCG</strong></h3><p>VCG是一个基于字典的自动化源代码扫描工具，可以由用户自定义需要扫描的数据。它可以对源代码中所有可能存在风险的函数和文本做一个快速的定位。</p>
+<p>VCG的下载链接如下：</p>
+<p><a href="http://sourceforge.net/projects/visualcodegrepp/" target="_blank" rel="external">http://sourceforge.net/projects/visualcodegrepp/</a></p>
+<p>双击下载的msi文件进行安装即可。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/11.png" alt="11"></p>
+<p>在Settings-&gt;Options-&gt;Config Files选项中可以对每种语言的扫描配置文件进行编辑。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/12.png" alt="12"></p>
+<p>点击Settings选项，选择扫描的目标语言类型。点击File-&gt;New Target Directory选项，选择需要扫描的源代码文件存放目录，我们选择上文提到的应用实例存放目录。点击Scan-&gt;Full Scan选项，扫描开始。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/13.png" alt="13"></p>
+<p>扫描结果以图标的形式对被扫描文件的数据做一个统计，这个功能有点鸡肋。我们重点关注Results和Summary Table两个面板显示的内容。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/14.png" alt="14"></p>
+<p>Results面板显示所有存在安全风险的源码，右键点击可以对结果进行排序过滤。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/15.png" alt="15"></p>
+<p>Summary Table面板是对Results面板内容的总结展示。</p>
+<p>VCG是通过匹配字典的方式查找可能存在风险的源代码片段。它的扫描原理较为简单，跟RIPS侧重点不同，并不深度发掘应用漏洞。VCG可以作为一个快速定位源代码风险函数的辅助工具使用。</p>
+<h3 id="0x04-Fortify-SCA"><a href="#0x04-Fortify-SCA" class="headerlink" title="0x04 Fortify SCA"></a><strong>0x04 Fortify SCA</strong></h3><p>Fortify SCA是一款商业软件，价格较为昂贵，因此我只找到了一个早期的版本进行试用。因为是商业软件，它有详细的使用文档，查阅非常方便。它支持一些IDE的插件功能，在安装的时候会有选项。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/16.png" alt="16"></p>
+<p>Fortify SCA的代码审计功能依赖于它的规则库文件，我们可以下载更新的规则库，然后放置在安装目录下相应的位置。bin文件放置在安装目录下Core\config\rules文件夹，xml文件放置在Core\config\ExternalMetadata文件夹（如果该文件夹没有则新建一个）。</p>
+<p>打开Audit Workbench，点击Start New Project-&gt;Advanced Scan选项就可以快速开始一个审计任务。选择需要审计的应用程序根目录，在Additional Options选项中选择使用的规则库，在Audit Guide提出的四个问题中选择对应的选项，点击Run Scan即可。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/17.png" alt="17"></p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/18.png" alt="18"></p>
+<p>审计的结果由5个面板来呈现。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/19.png" alt="19"></p>
+<p>我们来看跟RIPS审计结果同样的SQL注入问题。点击左侧问题，源代码面板自动定位到出现问题的源代码行。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/20.png" alt="20"></p>
+<p>分析跟踪面板显示了详细的数据走向。从COOKIE读入-&gt;赋值给变量$procookie-&gt;带入cheakCookie()函数-&gt;赋值给变量$sql-&gt;带入mysqli_query()函数执行。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/21.png" alt="21"></p>
+<p>左侧每一个图标的含义在使用手册上可以查到。点击其中每一行，自动定位到对应的源代码行。同时在问题审计面板的Diagram中，有更为形象的数据流向图，直观展示了漏洞产生的原因。</p>
+<p><img src="http://www.ms509.com/wp-content/uploads/2016/04/22.png" alt="22"></p>
+<p>审计面板的其他标签详细说明了漏洞信息，相对于RIPS这种开源软件，Fortify SCA审计结果展示更为详细。Tools-&gt;Generate Report功能还可以根据用户的需求生成审计结果的报告。</p>
+<h3 id="0x05-总结"><a href="#0x05-总结" class="headerlink" title="0x05 **总结**"></a><strong>0x05 **</strong>总结**</h3><p>VCG与其他两款工具不同，它是一个简洁的风险函数扫描定位工具，基于字典实现扫描功能。而RIPS和Fortify SCA则是静态深度分析源代码漏洞的利器，它们使用各自的技术对应用程序执行过程进行了追踪分析，做了深层次的漏洞挖掘工作。RIPS易于部署和使用，可以作为简单应用功能的自动化审计分析工具。而Fortify SCA功能更为强大，可以胜任较为复杂的应用自动化分析。在实际审计工作中可以结合使用两种工具，取长补短。</p>
+<p>自动化的静态代码审计工具可以节省代码审计的人力成本，是提高代码审计效率的重要手段。然而需要注意的是，自动化工具并非是完全智能的，跟所有的漏洞扫描工具一样，误报率的存在仍然是一个现实的问题。因此，报表中显示的漏洞需要审计人员进一步确认是否真的存在。此外，自动化工具还有一个很大的局限性：它仅能够对常见的Web应用漏洞类型进行挖掘，对于Web 2.0时代兴起的业务逻辑漏洞挖掘可以说是束手无力。所以，对于有经验的代码审计人员来说，审计工具起到的仅仅是辅助作用，他们会在利用工具的基础上结合自己经验挖掘出更深层次的漏洞。</p>
+</div><div class="tags"></div><div class="post-nav"><a href="/2016/04/18/spywaller/" class="pre">Spywaller恶意代码分析</a><a href="/2016/04/11/idman-analysis/" class="next">IDMan.exe漏洞分析及利用</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank" class="search-form"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://yoursite.com"/></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div><ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/IOS/">IOS</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/">WEB</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/安全工具/">安全工具</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/WEB/渗透测试/">渗透测试</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/">二进制</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/二进制/原创漏洞/">原创漏洞</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/原创漏洞/">原创漏洞</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/原创漏洞/安卓/">安卓</a></li></ul></li><li class="category-list-item"><a class="category-list-link" href="/categories/安全工具/">安全工具</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/安卓/">安卓</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/未分类/">未分类</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/移动安全/">移动安全</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/移动安全/二进制安全/">二进制安全</a></li></ul></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/android/" style="font-size: 15px;">android</a> <a href="/tags/android-drozer/" style="font-size: 15px;">android drozer</a> <a href="/tags/Cknife-Disclaimer/" style="font-size: 15px;">Cknife Disclaimer</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2017/10/25/test/">test</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/08/04/github-infoleak/">Github信息泄露升级版案例</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/07/14/Moto-bootloader-exploit/">CVE-2016-10277在MOTO X手机上的漏洞利用实践</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/28/Bluetooth-Vul-3/">蓝牙App漏洞系列分析之三</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/14/name-spoof/">“同形异义字”钓鱼攻击，钉钉中招</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/12/Bluetooth-Vul-2/">蓝牙App漏洞系列分析之二</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/06/06/bypass360-analysis/">分享一种可关闭大多数杀软的技术（对360安全卫士已验证成功）</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/14/wannacry/">首发 | Wannacry勒索软件母体主程序逆向分析（含临时解决方案自动化工具</a></li><li class="post-list-item"><a class="post-list-link" href="/2017/05/04/Bluetoooth_Vul_1/">蓝牙App漏洞系列分析之一</a></li><li class="post-list-item"><a class="post-list-link" href="/2016/12/21/android-telephony-dos/">Android Telephony拒绝服务漏洞（CVE-2016-6763）分析</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2017 <a href="/." rel="nofollow">MS509 Team.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a id="rocket" href="#top" class="show"></a><script type="text/javascript" src="/js/totop.js?v=0.0.0" async></script><script type="text/javascript" src="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=0.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.bootcss.com/fancybox/3.1.20/jquery.fancybox.min.css"><script type="text/javascript" src="/js/codeblock-resizer.js?v=0.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=0.0.0"></script></div></body></html>
