@@ -6,7 +6,7 @@
 <p><strong>干货区</strong>：</p>
 <p>反序列化漏洞广泛存在于php、python、java、ruby等编程语言中，影响一大波web系统。Android系统近年也爆出几个高危反序列化漏洞，包括CVE-2014-7911、CVE-2015-3825等，影响了包括Android 4 到 Android 5.1大部分系统，能够让恶意app提权至仅次于root的system权限，影响甚广。本次议题主要根据两个CVE漏洞实例，深入分析Android系统反序列化漏洞成因以及漏洞利用细节。</p>
 <p>Android系统由于在反序列时由于检查不严，导致恶意程序能够通过精心构造的序列化对象来攻击系统。CVE-2014-7911和CVE-2015-3825是Android系统反序列化漏洞的实例，通过构造恶意对象能够触发漏洞并劫持系统进程，通过利用ROP、Stack pivot、ASLR绕过等技术可以达到提权并执行shellcode的目的。</p>
-<p><img src="/2016/11/02/jsrc-presentation/111.png" alt="111">]</p>
+<p><img src="/2016/11/02/jsrc-presentation/111.png" alt="111"></p>
 <p>恶意代码攻击流程</p>
 <p><img src="/2016/11/02/jsrc-presentation/122.png" alt="122">]</p>
 <p>&nbsp;</p>
